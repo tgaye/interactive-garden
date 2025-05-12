@@ -1,0 +1,393 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Garden</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #e6f7ff;
+            font-family: 'Arial', sans-serif;
+        }
+        #game-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+            aspect-ratio: 4/3;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 10px 20px;
+            border-radius: 20px;
+            text-align: center;
+            font-size: 14px;
+            max-width: 80%;
+        }
+    </style>
+
+<base target="_self">
+
+
+    </head><body><div id="game-container"></div>
+    <div id="instructions">Click to plant flowers | Watch for the rabbit!</div>
+
+    <script>
+        let garden = [];
+        let rabbit = {
+            x: 0,
+            y: 0,
+            size: 40,
+            visible: false,
+            timer: 0,
+            peekDuration: 0,
+            direction: 1
+        };
+        let sun = {
+            x: 100,
+            y: 100,
+            size: 80,
+            rays: 12,
+            rayLength: 40,
+            pulse: 0,
+            pulseSpeed: 0.02
+        };
+        let wind = {
+            strength: 0,
+            direction: 0,
+            changeTimer: 0
+        };
+
+        function setup() {
+            let canvas = createCanvas(800, 600);
+            canvas.parent('game-container');
+            
+            // Initialize some plants
+            for (let i = 0; i < 5; i++) {
+                addPlant(random(width), height - 50, floor(random(3, 6)));
+            }
+        }
+
+        function draw() {
+            // Background with gradient sky
+            drawSky();
+            
+            // Update and draw sun
+            updateSun();
+            drawSun();
+            
+            // Update wind
+            updateWind();
+            
+            // Draw ground
+            drawGround();
+            
+            // Update and draw plants
+            updatePlants();
+            drawPlants();
+            
+            // Update and draw rabbit
+            updateRabbit();
+            if (rabbit.visible) {
+                drawRabbit();
+            }
+            
+            // Draw pollen particles
+            drawPollen();
+        }
+
+        function drawSky() {
+            // Sky gradient
+            for (let y = 0; y < height * 0.6; y++) {
+                let inter = map(y, 0, height * 0.6, 0, 1);
+                let c = lerpColor(color(135, 206, 235), color(240, 248, 255), inter);
+                stroke(c);
+                line(0, y, width, y);
+            }
+        }
+
+        function updateSun() {
+            sun.pulse += sun.pulseSpeed;
+            if (sun.pulse > TWO_PI) sun.pulse = 0;
+        }
+
+        function drawSun() {
+            noStroke();
+            fill(255, 255, 150, 200);
+            ellipse(sun.x, sun.y, sun.size);
+            
+            // Sun rays
+            stroke(255, 255, 150, 150);
+            strokeWeight(2);
+            let pulseOffset = sin(sun.pulse) * 5;
+            for (let i = 0; i < sun.rays; i++) {
+                let angle = TWO_PI / sun.rays * i;
+                let x1 = sun.x + cos(angle) * sun.size/2;
+                let y1 = sun.y + sin(angle) * sun.size/2;
+                let x2 = sun.x + cos(angle) * (sun.size/2 + sun.rayLength + pulseOffset);
+                let y2 = sun.y + sin(angle) * (sun.size/2 + sun.rayLength + pulseOffset);
+                line(x1, y1, x2, y2);
+            }
+        }
+
+        function drawGround() {
+            // Ground
+            noStroke();
+            fill(139, 195, 74);
+            rect(0, height * 0.7, width, height * 0.3);
+            
+            // Ground texture
+            stroke(107, 151, 57, 50);
+            strokeWeight(1);
+            for (let y = height * 0.7; y < height; y += 5) {
+                for (let x = 0; x < width; x += 10) {
+                    let offset = noise(x * 0.01, y * 0.01) * 10;
+                    line(x, y + offset, x + 5, y + offset + random(-2, 2));
+                }
+            }
+        }
+
+        function updateWind() {
+            wind.changeTimer--;
+            if (wind.changeTimer <= 0) {
+                wind.strength = random(0.2, 1.5);
+                wind.direction = random(-0.2, 0.2);
+                wind.changeTimer = random(60, 180);
+            }
+        }
+
+        function addPlant(x, y, segments) {
+            let plant = {
+                x: x,
+                y: y,
+                segments: [],
+                flowers: [],
+                sway: random(TWO_PI),
+                swaySpeed: random(0.02, 0.05),
+                growth: 0,
+                maxGrowth: random(0.8, 1.2),
+                type: floor(random(3))
+            };
+            
+            // Create stem segments
+            for (let i = 0; i < segments; i++) {
+                plant.segments.push({
+                    length: random(15, 25),
+                    width: map(i, 0, segments-1, 6, 2)
+                });
+            }
+            
+            // Add flowers if applicable
+            if (plant.type > 0) {
+                let flowerCount = plant.type === 1 ? 1 : floor(random(2, 5));
+                for (let i = 0; i < flowerCount; i++) {
+                    plant.flowers.push({
+                        size: random(15, 25),
+                        petalCount: floor(random(5, 8)),
+                        angle: random(TWO_PI),
+                        rotationSpeed: random(-0.02, 0.02),
+                        yOffset: random(-10, 10)
+                    });
+                }
+            }
+            
+            garden.push(plant);
+        }
+
+        function updatePlants() {
+            for (let plant of garden) {
+                // Grow plant
+                if (plant.growth < plant.maxGrowth) {
+                    plant.growth += 0.002;
+                }
+                
+                // Sway with wind
+                plant.sway += plant.swaySpeed + wind.strength * 0.01;
+                
+                // Update flowers
+                for (let flower of plant.flowers) {
+                    flower.angle += flower.rotationSpeed;
+                }
+            }
+        }
+
+        function drawPlants() {
+            for (let plant of garden) {
+                push();
+                translate(plant.x, plant.y);
+                
+                // Calculate total height
+                let totalHeight = 0;
+                for (let seg of plant.segments) {
+                    totalHeight += seg.length;
+                }
+                
+                // Initialize swayAmount outside the loop so it's available for flowers
+                let swayAmount = sin(plant.sway) * wind.strength * 5;
+                
+                // Draw stem
+                let currentY = 0;
+                for (let i = 0; i < plant.segments.length; i++) {
+                    let seg = plant.segments[i];
+                    // Calculate segment-specific sway
+                    let segmentSwayAmount = sin(plant.sway + i * 0.3) * wind.strength * 5;
+                    let growthFactor = min(1, plant.growth * 1.5 - i * 0.3);
+                    
+                    if (growthFactor > 0) {
+                        stroke(34, 139, 34);
+                        strokeWeight(seg.width * growthFactor);
+                        noFill();
+                        
+                        let nextY = currentY - seg.length * growthFactor;
+                        bezier(
+                            0, currentY,
+                            segmentSwayAmount * 0.3, currentY - seg.length * 0.3 * growthFactor,
+                            segmentSwayAmount * 0.7, currentY - seg.length * 0.7 * growthFactor,
+                            segmentSwayAmount, nextY
+                        );
+                        
+                        // Update swayAmount to the last segment's value for flower positioning
+                        if (i === plant.segments.length - 1) {
+                            swayAmount = segmentSwayAmount;
+                        }
+                        
+                        currentY = nextY;
+                    }
+                }
+                
+                // Draw flowers
+                for (let flower of plant.flowers) {
+                    if (plant.growth > 0.7) {
+                        let flowerY = currentY + flower.yOffset;
+                        let flowerSize = flower.size * min(1, (plant.growth - 0.7) * 3);
+                        
+                        // Center of flower
+                        fill(255, 255, 100);
+                        noStroke();
+                        ellipse(swayAmount, flowerY, flowerSize * 0.3);
+                        
+                        // Petals
+                        for (let p = 0; p < flower.petalCount; p++) {
+                            let petalAngle = flower.angle + TWO_PI / flower.petalCount * p;
+                            fill(plant.type === 1 ? color(255, 100, 100, 200) : color(200, 100, 255, 200));
+                            
+                            push();
+                            translate(swayAmount, flowerY);
+                            rotate(petalAngle);
+                            ellipse(flowerSize * 0.4, 0, flowerSize * 0.6, flowerSize * 0.3);
+                            pop();
+                        }
+                    }
+                }
+                
+                pop();
+            }
+        }
+
+        function updateRabbit() {
+            rabbit.timer--;
+            
+            if (rabbit.timer <= 0 && !rabbit.visible) {
+                // Decide to appear
+                if (random() < 0.02) {
+                    rabbit.visible = true;
+                    rabbit.x = random(width);
+                    rabbit.y = height - 50;
+                    rabbit.peekDuration = floor(random(60, 120));
+                    rabbit.direction = random() < 0.5 ? -1 : 1;
+                } else {
+                    rabbit.timer = floor(random(60, 180));
+                }
+            } else if (rabbit.visible) {
+                rabbit.peekDuration--;
+                if (rabbit.peekDuration <= 0) {
+                    rabbit.visible = false;
+                    rabbit.timer = floor(random(120, 300));
+                }
+                
+                // Move slightly
+                rabbit.x += rabbit.direction * 0.5;
+                if (rabbit.x < 0 || rabbit.x > width) {
+                    rabbit.direction *= -1;
+                }
+            }
+        }
+
+        function drawRabbit() {
+            push();
+            translate(rabbit.x, rabbit.y);
+            scale(rabbit.direction, 1);
+            
+            // Body
+            fill(240);
+            noStroke();
+            ellipse(0, -20, rabbit.size * 0.8, rabbit.size);
+            
+            // Head
+            ellipse(rabbit.size * 0.3, -40, rabbit.size * 0.6, rabbit.size * 0.5);
+            
+            // Ears
+            fill(240);
+            ellipse(rabbit.size * 0.2, -60, rabbit.size * 0.15, rabbit.size * 0.4);
+            ellipse(rabbit.size * 0.4, -60, rabbit.size * 0.15, rabbit.size * 0.4);
+            
+            // Inner ears
+            fill(255, 200, 200);
+            ellipse(rabbit.size * 0.2, -55, rabbit.size * 0.08, rabbit.size * 0.3);
+            ellipse(rabbit.size * 0.4, -55, rabbit.size * 0.08, rabbit.size * 0.3);
+            
+            // Eyes
+            fill(0);
+            ellipse(rabbit.size * 0.35, -42, rabbit.size * 0.05);
+            ellipse(rabbit.size * 0.25, -42, rabbit.size * 0.05);
+            
+            // Nose
+            fill(255, 150, 150);
+            triangle(
+                rabbit.size * 0.3, -35,
+                rabbit.size * 0.25, -30,
+                rabbit.size * 0.35, -30
+            );
+            
+            pop();
+        }
+
+        function drawPollen() {
+            for (let i = 0; i < 5; i++) {
+                if (random() < 0.1) {
+                    let x = random(width);
+                    let y = random(height * 0.6);
+                    let size = random(2, 5);
+                    
+                    fill(255, 255, 150, 150);
+                    noStroke();
+                    ellipse(x, y, size);
+                }
+            }
+        }
+
+        function mousePressed() {
+            // Plant a new flower where clicked
+            if (mouseY > height * 0.6 && mouseY < height - 50) {
+                addPlant(mouseX, height - 50, floor(random(3, 6)));
+            }
+        }
+
+        function windowResized() {
+            resizeCanvas(800, 600);
+        }
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
